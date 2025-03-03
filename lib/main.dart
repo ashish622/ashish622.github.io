@@ -1,29 +1,7 @@
-import 'dart:ui_web' as ui;
 import 'dart:html' as html;
 import 'package:flutter/material.dart';
-import 'dart:js' as js;
 
 void main() {
-  configureJsInterop();
-
-  // Register a div container to hold the image
-  ui.platformViewRegistry.registerViewFactory(
-    'img-view',
-        (int viewId) {
-      final div = html.DivElement()
-        ..id = 'image-container'
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..style.backgroundColor = '#cccccc' // Grey background
-        ..style.borderRadius = '12px'
-        ..style.display = 'flex'
-        ..style.justifyContent = 'center'
-        ..style.alignItems = 'center';
-
-      return div;
-    },
-  );
-
   runApp(const MyApp());
 }
 
@@ -37,7 +15,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/// [Widget] displaying the home page consisting of an image and buttons.
+/// [Widget] displaying the home page container and buttons.
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -45,195 +23,154 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  String imageUrl = '';
-  OverlayEntry? overlayEntry;
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
 
-  /// Toggles the context menu
-  void toggleMenu(BuildContext context) {
-    if (overlayEntry == null) {
-      showMenuOverlay(context);
-    } else {
-      closeMenuOverlay();
+  double _targetPosition = 0.0;
+  bool _isAnimating = false;
+  double _screenWidth = html.window.innerWidth!.toDouble();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    );
+    _animation = Tween<double>(
+      begin: 0.0,
+      end: _targetPosition,
+    ).animate(_controller)
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
+          setState(() {
+            _isAnimating = false;
+          });
+        }
+      });
+
+    // Listen for window resize and maximize events
+    html.window.addEventListener('resize', (event) {
+      print('this is the event ${event.target}');
+      setState(() {
+        _screenWidth = html.window.innerWidth!.toDouble();
+        _adjustPosition();
+      });
+    });
+
+    html.window.addEventListener('visibilitychange', (event) {
+      if (html.document.visibilityState == 'visible') {
+        setState(() {
+          _screenWidth = html.window.innerWidth!.toDouble();
+          _adjustPosition();
+        });
+      }
+    });
+  }
+
+  /// function that handles the left or right movement of the box
+  void _moveContainer(double target) {
+    setState(() {
+      _isAnimating = true;
+      _targetPosition = target;
+      _animation = Tween<double>(
+        begin: _animation.value,
+        end: _targetPosition,
+      ).animate(_controller);
+      _controller.forward(from: 0.0);
+    });
+  }
+
+  /// function that handles the changes in tab size
+  void _adjustPosition() {
+    final leftEdge = -_screenWidth / 2 + 32;
+    final rightEdge = _screenWidth / 2 - 32;
+
+    debugPrint("this is the screen width $_screenWidth");
+
+    if (_targetPosition > leftEdge && _targetPosition < 0) {
+      _moveContainer(leftEdge);
+    } else if(_targetPosition < leftEdge && _targetPosition < 0){
+      _moveContainer(leftEdge);
+    }
+    else if (_targetPosition < rightEdge && _targetPosition > 0) {
+      _moveContainer(rightEdge);
+    } else if(_targetPosition > rightEdge && _targetPosition > 0){
+      _moveContainer(rightEdge);
     }
   }
 
-  /// Displays the floating menu using Overlay
-  void showMenuOverlay(BuildContext context) {
-    final overlay = Overlay.of(context);
-    final overlayState = overlay.context.findRenderObject() as RenderBox?;
-    final size = overlayState?.size ?? Size.zero;
 
-    overlayEntry = OverlayEntry(
-      builder: (context) {
-        return Stack(
-          children: [
-            // Dimmed background
-            GestureDetector(
-              onTap: closeMenuOverlay, // Close menu on tap outside
-              child: Container(
-                width: size.width,
-                height: size.height,
-                color: Colors.black54,
-              ),
-            ),
-            // Menu above FAB
-            Positioned(
-              bottom: 80, // Adjust this to position correctly
-              right: 24,
-              child: Material(
-                color: Colors.transparent,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _buildMenuItem("Enter Fullscreen", Icons.fullscreen, () {
-                      js.context.callMethod('enterFullScreen');
-                      closeMenuOverlay();
-                    }),
-                    _buildMenuItem("Exit Fullscreen", Icons.fullscreen_exit, () {
-                      js.context.callMethod('exitFullScreen');
-                      closeMenuOverlay();
-                    }),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    overlay.insert(overlayEntry!);
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
-
-  /// Closes the floating menu
-  void closeMenuOverlay() {
-    overlayEntry?.remove();
-    overlayEntry = null;
-  }
-
-  /// Builds each menu item
-  Widget _buildMenuItem(String text, IconData icon, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        margin: const EdgeInsets.only(bottom: 4),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 5,
-              spreadRadius: 1,
-              offset: Offset(0, 3),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.black54),
-            const SizedBox(width: 12),
-            Text(text, style: const TextStyle(fontSize: 16, color: Colors.black87)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  final doc = html.document;
 
   @override
   Widget build(BuildContext context) {
+
+    /// left corner of the screen (32 is the box size)
+    final leftEdge = -_screenWidth / 2 + 32;
+
+    /// right corner of the screen
+    final rightEdge = _screenWidth / 2 - 32;
+
+    bool canMoveLeft = _animation.value > leftEdge && !_isAnimating;
+    bool canMoveRight = _animation.value < rightEdge && !_isAnimating;
+
     return Scaffold(
       appBar: AppBar(),
       body: Padding(
         padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: GestureDetector(
-                onDoubleTap: (){
+              child: Center(
+                child: AnimatedBuilder(
+                  animation: _animation,
+                  builder: (context, child) {
 
-                  if(imageUrl.isNotEmpty){
-                    if(html.document.fullscreenElement != null){
-                      html.document.exitFullscreen();
-                    } else{
-                      html.document.documentElement?.requestFullscreen();
-                    }
-                  }
-                },
-                child: AspectRatio(
-                  aspectRatio: 1,
-                  child: HtmlElementView(viewType: 'img-view'),
+                    /// animated box that will animate
+                    return Transform.translate(
+                      offset: Offset(_animation.value, 0.0),
+                      transformHitTests: false,
+                      child: Container(
+                        height: 32,
+                        width: 32,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.rectangle,
+                          color: Colors.red,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
-            const SizedBox(height: 8),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: TextField(
-                    decoration: const InputDecoration(hintText: 'Image URL'),
-                    onChanged: (value) => setState(() => imageUrl = value),
-                  ),
-                ),
+
+                /// button to move box to left
                 ElevatedButton(
-                  onPressed: () {
-                    if (imageUrl.isNotEmpty) {
-                      js.context.callMethod('updateImage', [imageUrl]);
-                    }
-                  },
-                  child: const Padding(
-                    padding: EdgeInsets.fromLTRB(0, 12, 0, 12),
-                    child: Icon(Icons.arrow_forward),
-                  ),
+                  onPressed: canMoveLeft ? () => _moveContainer(leftEdge) : null,
+                  child: const Text("Left"),
+                ),
+
+                /// button to move box to right
+                ElevatedButton(
+                  onPressed: canMoveRight ? () => _moveContainer(rightEdge) : null,
+                  child: const Text("Right"),
                 ),
               ],
             ),
-            const SizedBox(height: 64),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => toggleMenu(context),
-        child: const Icon(Icons.add),
-      ),
     );
   }
-}
-
-/// JavaScript functions to handle image rendering and fullscreen.
-void configureJsInterop() {
-  js.context['updateImage'] = (String url) {
-    final imgElement = html.ImageElement()
-      ..src = url
-      ..style.maxWidth = '100%'
-      ..style.maxHeight = '100%'
-      ..style.objectFit = 'contain'
-      ..style.borderRadius = '12px';
-
-    final container = html.document.getElementById('image-container');
-    if (container != null) {
-      container.innerHtml = ''; // Clear previous image
-      container.append(imgElement);
-    } else {
-      debugPrint("Error: image-container div not found");
-    }
-  };
-
-  js.context['enterFullScreen'] = () {
-    final doc = html.document.documentElement;
-    if (doc != null) {
-      doc.requestFullscreen();
-    }
-  };
-
-  js.context['exitFullScreen'] = () {
-    if (html.document.fullscreenElement != null) {
-      html.document.exitFullscreen();
-    }
-  };
 }
